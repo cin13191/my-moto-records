@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>機車保養紀錄 - Records</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { color: #9a3412; background-color: #fffaf0; }
+        .text-main { color: #9a3412; }
+        .bg-main-orange { background-color: #f97316; }
+        .item-chip.selected { background-color: #f97316 !important; color: white; border-color: #f97316; }
+        .sort-btn.active { background-color: #9a3412; color: white; border-color: #9a3412; }
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(4px); }
+        .modal.active { display: flex; }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    </style>
+</head>
+<body class="font-sans">
+
+<div class="max-w-6xl mx-auto p-4 md:p-8">
+    <header class="flex items-center gap-4 mb-8">
+        <div class="bg-white p-3 rounded-2xl shadow-sm border border-orange-100"><span class="text-3xl">🛵</span></div>
+        <h1 class="text-2xl font-black text-main">機車保養紀錄</h1>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div class="lg:col-span-5 flex flex-col gap-8 order-1">
+            <aside class="bg-white p-6 rounded-3xl shadow-sm border border-orange-100">
+                <h2 class="text-lg font-bold text-main mb-5">📝 新增紀錄</h2>
+                <div class="space-y-4">
+                    <input type="date" id="addDate" class="w-full border-2 border-orange-50 p-3 rounded-2xl outline-none focus:border-orange-400 font-bold">
+                    <div class="flex gap-2">
+                        <select id="addLocation" class="flex-1 border-2 border-orange-50 p-3 rounded-2xl outline-none bg-white font-bold"></select>
+                        <button onclick="addLoc()" class="bg-orange-50 px-4 rounded-2xl font-bold">+</button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="number" id="addMileage" class="flex-1 border-2 border-orange-50 p-3 rounded-2xl outline-none font-bold" placeholder="公里數">
+                        <span class="font-black text-main whitespace-nowrap text-sm">KM</span>
+                    </div>
+                    <div id="addItemContainer" class="flex flex-wrap gap-2 pt-1"></div>
+                    <textarea id="addNotes" class="w-full border-2 border-orange-50 p-3 rounded-2xl h-24 outline-none" placeholder="備註內容"></textarea>
+                    <button onclick="submitNewRecord()" id="saveBtn" class="w-full bg-main-orange text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:opacity-90 transition">儲存紀錄</button>
+                </div>
+            </aside>
+
+            <section class="space-y-4">
+                <div class="flex flex-col gap-3 px-2">
+                    <h2 class="text-lg font-bold text-main">🕒 歷史保養紀錄</h2>
+                    <div class="space-y-2">
+                        <select id="filterItem" onchange="resetAndRender()" class="w-full border border-orange-200 bg-white text-main font-bold py-2 px-3 rounded-xl outline-none">
+                            <option value="all">所有維修項目 (全部顯示)</option>
+                        </select>
+                        <div class="flex gap-2">
+                            <button onclick="setSort('date')" id="sortDateBtn" class="sort-btn flex-1 border border-orange-200 text-[11px] font-bold py-2 rounded-xl active">依維修日期排序</button>
+                            <button onclick="setSort('createDate')" id="sortCreateBtn" class="sort-btn flex-1 border border-orange-200 text-[11px] font-bold py-2 rounded-xl">依建立日期排序</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="cardArea" class="space-y-3"></div>
+                <button id="loadMoreBtn" onclick="loadMore()" class="hidden w-full py-3 bg-white border border-orange-100 text-main font-bold rounded-2xl shadow-sm hover:bg-orange-50 transition">載入更多保養紀錄 ↓</button>
+            </section>
+        </div>
+
+        <main class="lg:col-span-7 order-2">
+            <div class="bg-white p-6 rounded-3xl shadow-sm border border-orange-100 lg:sticky lg:top-8">
+                <div class="flex flex-wrap justify-between items-center mb-5 gap-4">
+                    <h2 class="text-lg font-bold text-main">📊 維修週期進度</h2>
+                    <div class="flex items-center gap-2 bg-orange-50 px-4 py-2 rounded-2xl border border-orange-100">
+                        <span class="text-sm font-bold text-main">目前里程數:</span>
+                        <input type="number" id="currentKMBasis" oninput="renderStats()" class="w-24 bg-transparent text-center focus:outline-none text-main font-black text-lg" placeholder="自動抓取">
+                        <span class="text-[10px] font-bold opacity-40">KM</span>
+                    </div>
+                </div>
+                <div id="progressArea" class="space-y-8"></div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<div id="detailModal" class="modal px-4">
+    <div class="bg-white p-8 rounded-[2.5rem] w-full max-w-md space-y-6 shadow-2xl relative">
+        <h3 class="text-2xl font-black text-main">保養詳情</h3>
+        <input type="hidden" id="editId">
+        <input type="date" id="editDate" class="w-full border-2 border-orange-50 p-3 rounded-2xl outline-none font-bold">
+        <select id="editLocation" class="w-full border-2 border-orange-50 p-3 rounded-2xl outline-none bg-white font-bold"></select>
+        <div class="flex items-center gap-2">
+            <input type="number" id="editMileage" class="flex-1 border-2 border-orange-50 p-3 rounded-2xl outline-none font-bold"><span class="font-bold text-main whitespace-nowrap text-sm">KM</span>
+        </div>
+        <div id="editItemContainer" class="flex flex-wrap gap-2 pt-1"></div>
+        <textarea id="editNotes" class="w-full border-2 border-orange-50 p-3 rounded-2xl h-24 outline-none"></textarea>
+        <div class="grid grid-cols-2 gap-4">
+            <button onclick="updateRecord()" id="updateBtn" class="bg-main-orange text-white py-4 rounded-2xl font-black">更新</button>
+            <button onclick="deleteRecord()" id="deleteBtn" class="bg-red-50 text-red-500 py-4 rounded-2xl font-black">刪除</button>
+        </div>
+        <button onclick="closeModal()" class="w-full text-gray-400 text-sm font-bold">返回列表</button>
+    </div>
+</div>
+
+<script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbyz14ZGnA0wXzwSEYuE2iOP0Zfdf6VBW23pA5sOahq7Qi9BVuq-KF9ZXTpSXDOp3y7d/exec";
+    let records = [];
+    let dynamicItems = ["機油", "齒輪油", "前輪", "後輪", "前剎車皮", "後剎車皮"];
+    let locs = ["自家", "常用機車行"];
+    let currentSort = 'date';
+    let displayCount = 10; // 預設顯示 10 筆
+    let customIntervals = JSON.parse(localStorage.getItem('motoIntervals')) || { "機油": 1000, "齒輪油": 2000, "前輪": 10000, "後輪": 8000, "前剎車皮": 5000, "後剎車皮": 5000 };
+
+    window.onload = () => { setTodayDate(); loadData(); };
+
+    function setTodayDate() {
+        const now = new Date();
+        const formatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' });
+        document.getElementById('addDate').value = formatter.format(now);
+    }
+
+    async function loadData() {
+        const res = await fetch(`${API_URL}?action=get`);
+        const data = await res.json();
+        records = data.records;
+        locs = Array.from(new Set([...locs, ...data.allLocations]));
+        dynamicItems = Array.from(new Set([...dynamicItems, ...data.allItems]));
+        renderBaseUI();
+        renderStats();
+        sortAndRenderCards();
+    }
+
+    function renderBaseUI() {
+        const locHTML = locs.map(l => `<option value="${l}">${l}</option>`).join('');
+        document.getElementById('addLocation').innerHTML = locHTML;
+        document.getElementById('editLocation').innerHTML = locHTML;
+        const filterHTML = '<option value="all">所有維修項目 (全部顯示)</option>' + dynamicItems.map(i => `<option value="${i}">${i}</option>`).join('');
+        document.getElementById('filterItem').innerHTML = filterHTML;
+        const chips = () => dynamicItems.map(i => `<button onclick="this.classList.toggle('selected')" class="item-chip border-2 border-orange-50 px-4 py-2 rounded-xl text-main font-bold transition">${i}</button>`).join('');
+        document.getElementById('addItemContainer').innerHTML = chips() + `<button onclick="addItem()" class="border-2 border-dashed border-orange-200 text-orange-300 px-4 py-2 rounded-xl font-bold">+</button>`;
+        document.getElementById('editItemContainer').innerHTML = chips();
+    }
+
+    function setSort(type) {
+        currentSort = type;
+        document.getElementById('sortDateBtn').classList.toggle('active', type === 'date');
+        document.getElementById('sortCreateBtn').classList.toggle('active', type === 'createDate');
+        resetAndRender();
+    }
+
+    // 當篩選或排序變動時，重置顯示數量
+    function resetAndRender() {
+        displayCount = 10;
+        sortAndRenderCards();
+    }
+
+    function loadMore() {
+        displayCount += 10;
+        sortAndRenderCards();
+    }
+
+    // 核心修正：加入分頁切片與按鈕顯示邏輯
+    function sortAndRenderCards() {
+        const filterValue = document.getElementById('filterItem').value;
+        let filtered = [...records];
+        
+        if (filterValue !== 'all') {
+            filtered = filtered.filter(r => r.items.split(',').map(i => i.trim()).includes(filterValue));
+        }
+        
+        if (currentSort === 'date') { filtered.sort((a, b) => b.date.localeCompare(a.date)); } 
+        else { filtered.sort((a, b) => b.createDate - a.createDate); }
+
+        const totalFiltered = filtered.length;
+        const sliced = filtered.slice(0, displayCount);
+
+        document.getElementById('cardArea').innerHTML = sliced.map(r => `
+            <div onclick="openDetail('${r.id}')" class="bg-white p-5 rounded-3xl border border-orange-100 hover:shadow-md transition cursor-pointer active:scale-95">
+                <div class="flex justify-between items-start mb-1">
+                    <span class="text-sm font-bold text-orange-400">📅 ${r.date} - ${r.location}</span>
+                </div>
+                <div class="mb-3">
+                    <p class="text-sm text-main opacity-70 font-bold truncate">📝 ${r.notes || '無備註'}</p>
+                </div>
+                <div class="flex justify-between items-end mt-2">
+                    <div class="text-2xl font-black text-main whitespace-nowrap">
+                        ${r.mileage} <span class="text-sm">KM</span>
+                    </div>
+                    <div class="flex flex-wrap gap-1 justify-end ml-4">
+                        ${r.items.split(',').map(i => `<span class="bg-orange-50 text-main text-sm px-2 py-1 rounded-lg font-bold">${i.trim()}</span>`).join('')}
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        // 判斷是否顯示「載入更多」按鈕
+        const btn = document.getElementById('loadMoreBtn');
+        if (totalFiltered > displayCount) {
+            btn.classList.remove('hidden');
+            btn.innerText = `載入更多保養紀錄 (剩餘 ${totalFiltered - displayCount} 筆) ↓`;
+        } else {
+            btn.classList.add('hidden');
+        }
+    }
+
+    function renderStats() {
+        const area = document.getElementById('progressArea');
+        if (records.length === 0) return;
+        const manualBasis = document.getElementById('currentKMBasis').value;
+        const curKM = manualBasis ? parseInt(manualBasis) : Math.max(...records.map(r => parseInt(r.mileage)));
+        if(manualBasis) document.getElementById('addMileage').value = manualBasis;
+
+        area.innerHTML = dynamicItems.map(name => {
+            const last = [...records].sort((a, b) => b.date.localeCompare(a.date)).find(r => r.items.includes(name));
+            if (!last) return "";
+            const limit = customIntervals[name] || 5000;
+            const diffKM = curKM - parseInt(last.mileage);
+            const diffDays = Math.floor((new Date() - new Date(last.date)) / 86400000);
+            const percent = Math.min(Math.floor((diffKM / limit) * 100), 100);
+            return `
+                <div class="border-b border-orange-50 pb-5">
+                    <div class="flex flex-wrap justify-between font-bold mb-3 items-center gap-y-2">
+                        <div class="flex items-center gap-3">
+                            <span class="text-xl text-main">${name}</span>
+                            <span class="text-xl text-orange-400 font-bold">${diffDays} 天前</span>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <span class="text-xl text-main opacity-70 font-bold">${last.date} - ${last.mileage} KM</span>
+                            <div class="bg-orange-50 rounded-2xl px-3 py-2 flex items-center border border-orange-100">
+                                <input type="number" value="${limit}" onchange="updateInterval('${name}', this.value)" class="w-16 bg-transparent text-center focus:outline-none text-main text-xl font-black">
+                                <span class="text-lg font-bold text-main opacity-50 ml-1">KM</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="w-full bg-orange-100 h-3 rounded-full overflow-hidden"><div class="h-full bg-main-orange transition-all duration-500" style="width:${percent}%"></div></div>
+                </div>`;
+        }).join('');
+    }
+
+    async function submitNewRecord() {
+        const selected = Array.from(document.querySelectorAll('#addItemContainer .item-chip.selected')).map(el => el.innerText);
+        const data = { action: 'save', date: document.getElementById('addDate').value.replace(/-/g, '/'), location: document.getElementById('addLocation').value, mileage: document.getElementById('addMileage').value, items: selected.join(','), notes: document.getElementById('addNotes').value };
+        if(!data.date || !data.mileage || selected.length === 0) return alert("資訊不完整");
+        document.getElementById('saveBtn').innerText = "處理中...";
+        await fetch(API_URL, { method: 'POST', body: JSON.stringify(data) });
+        location.reload();
+    }
+
+    function openDetail(id) {
+        const r = records.find(x => x.id === String(id));
+        if(!r) return;
+        document.getElementById('editId').value = r.id;
+        document.getElementById('editDate').value = r.date.replace(/\//g, '-');
+        document.getElementById('editLocation').value = r.location;
+        document.getElementById('editMileage').value = r.mileage;
+        document.getElementById('editNotes').value = r.notes || "";
+        const selected = r.items.split(',').map(i => i.trim());
+        document.querySelectorAll('#editItemContainer .item-chip').forEach(c => c.classList.toggle('selected', selected.includes(c.innerText.trim())));
+        document.getElementById('detailModal').classList.add('active');
+    }
+
+    function closeModal() { document.getElementById('detailModal').classList.remove('active'); }
+
+    async function updateRecord() {
+        const selected = Array.from(document.querySelectorAll('#editItemContainer .item-chip.selected')).map(el => el.innerText);
+        const data = { action: 'edit', id: document.getElementById('editId').value, date: document.getElementById('editDate').value.replace(/-/g, '/'), location: document.getElementById('editLocation').value, mileage: document.getElementById('editMileage').value, items: selected.join(','), notes: document.getElementById('editNotes').value };
+        document.getElementById('updateBtn').innerText = "更新中...";
+        await fetch(API_URL, { method: 'POST', body: JSON.stringify(data) });
+        location.reload();
+    }
+
+    async function deleteRecord() {
+        if(!confirm("確定要刪除嗎？")) return;
+        await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'delete', id: document.getElementById('editId').value }) });
+        location.reload();
+    }
+
+    function updateInterval(n, v) { customIntervals[n] = parseInt(v); localStorage.setItem('motoIntervals', JSON.stringify(customIntervals)); renderStats(); }
+    function addLoc() { const v = prompt("地點:"); if(v) { locs.push(v); renderBaseUI(); } }
+    function addItem() { const v = prompt("項目:"); if(v) { dynamicItems.push(v); renderBaseUI(); } }
+</script>
+</body>
+</html>
